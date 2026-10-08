@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kenteken opzoeken</title>
+<style>
+:root{--bg:#e9e8e3;--ink:#22262a;--mute:#6a6f74;--card:#fff;--line:#d6d4cc;--plate:#f7c600;--blue:#1a3d9c}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1e21;--ink:#ecebe6;--mute:#9aa0a5;--card:#262a2e;--line:#383d42}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Helvetica Neue",Arial,sans-serif}
+main{max-width:720px;margin:0 auto;padding:40px 16px 64px}
+h1{font-size:1.1rem;font-weight:600;margin:0 0 20px;color:var(--mute)}
+.plate{display:flex;height:76px;border-radius:10px;overflow:hidden;border:3px solid #111;background:var(--plate);box-shadow:0 2px 0 #0003}
+.plate .eu{width:46px;background:var(--blue);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px;font-weight:700;font-size:.9rem}
+.plate .eu i{font-style:normal;font-size:1rem;color:#fc0;margin-bottom:auto;padding-top:6px}
+.plate input{flex:1;min-width:0;border:0;background:transparent;font:700 2.6rem/1 "Arial Narrow","Helvetica Neue",Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;text-align:center;color:#111;outline:0}
+.plate input::placeholder{color:#0004}
+.plate:focus-within{outline:3px solid var(--blue);outline-offset:3px}
+.go{margin-top:14px;width:100%;padding:12px;border:0;border-radius:8px;background:var(--ink);color:var(--bg);font:600 1rem inherit;font-family:inherit;cursor:pointer}
+.go:disabled{opacity:.5}
+.go:focus-visible,summary:focus-visible,.tok input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+#msg{margin:18px 0;color:var(--mute)}
+#msg.err{color:#c0392b}
+.head{margin:28px 0 8px}
+.head h2{margin:0;font-size:1.8rem;line-height:1.15}
+.head p{margin:4px 0 0;color:var(--mute)}
+.key{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:16px 0}
+.key div{background:var(--card);padding:10px 12px}
+.key b{display:block;font-size:.78rem;font-weight:500;color:var(--mute)}
+details{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:10px 0}
+summary{padding:12px 14px;font-weight:600;cursor:pointer}
+dl{margin:0;padding:0 14px 8px}
+dl div{display:flex;justify-content:space-between;gap:16px;padding:7px 0;border-top:1px solid var(--line)}
+dt{color:var(--mute);flex:0 0 46%}
+dd{margin:0;text-align:right;word-break:break-word}
+.sep{border-top:2px solid var(--line)}
+.tok{margin-top:36px;font-size:.88rem;color:var(--mute)}
+.tok input{width:100%;margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit}
+</style>
+</head>
+<body>
+<main>
+  <h1>Kenteken opzoeken</h1>
+  <div class="plate"><div class="eu"><i>★</i>NL</div>
+    <input id="k" placeholder="AB-123-C" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Kenteken">
+  </div>
+  <button class="go" id="go">Zoek voertuig</button>
+  <p id="msg" role="status">Voer een Nederlands kenteken in.</p>
+  <div id="out"></div>
+  <label class="tok">RDW app-token (optioneel, voorkomt rate limits)
+    <input id="t" placeholder="Plak je token hier" autocomplete="off">
+  </label>
+</main>
+<script>
+const BASE="https://opendata.rdw.nl/resource/";
+const SETS=[
+  ["m9d7-ebf2","Voertuig"],
+  ["8ys7-d773","Brandstof en emissie"],
+  ["vezc-m2t6","Carrosserie"],
+  ["kmfi-hrps","Voertuigklasse"],
+  ["3huj-srit","Aanvullende gegevens"],
+  ["a34c-vvps","APK-historie (geconstateerde gebreken)"],
+  ["af5r-44mf","Terugroepacties"]
+];
+const LABELS={merk:"Merk",handelsbenaming:"Model",voertuigsoort:"Soort",inrichting:"Inrichting",eerste_kleur:"Kleur",tweede_kleur:"Tweede kleur",aantal_zitplaatsen:"Zitplaatsen",aantal_deuren:"Deuren",aantal_cilinders:"Cilinders",cilinderinhoud:"Cilinderinhoud (cc)",massa_ledig_voertuig:"Massa leeg (kg)",massa_rijklaar:"Massa rijklaar (kg)",toegestane_maximum_massa_voertuig:"Max. massa (kg)",catalogusprijs:"Catalogusprijs (€)",datum_eerste_toelating:"Eerste toelating",datum_eerste_tenaamstelling_in_nederland:"Eerste tenaamstelling NL",datum_tenaamstelling:"Laatste tenaamstelling",vervaldatum_apk:"APK geldig tot",brandstof_omschrijving:"Brandstof",nettomaximumvermogen:"Vermogen (kW)",co2_uitstoot_gecombineerd:"CO₂ (g/km)",brandstofverbruik_gecombineerd:"Verbruik (l/100km)",emissieklasse:"Emissieklasse",wielbasis:"Wielbasis (cm)",lengte:"Lengte (cm)",breedte:"Breedte (cm)",hoogte_voertuig:"Hoogte (cm)",wam_verzekerd:"WAM-verzekerd",export_indicator:"Geëxporteerd",tellerstandoordeel:"Tellerstand-oordeel",zuinigheidsclassificatie:"Energielabel",openstaande_terugroepactie_indicator:"Open terugroepactie",taxi_indicator:"Taxi",type:"Type",variant:"Variant",uitvoering:"Uitvoering",gebrek_identificatie:"Gebrekcode",gebrek_omschrijving:"Omschrijving",aantal_gebreken_geconstateerd:"Aantal gebreken",meld_datum_door_keuringsinstantie:"Datum keuring",meld_tijd_door_keuringsinstantie:"Tijd keuring",soort_erkenning_omschrijving:"Soort keuring",referentiecode_rdw:"Referentiecode",status:"Status"};
+const SKIP=/^(kenteken|api_gekentekende_voertuigen_|:@)/;
+const $=id=>document.getElementById(id);
+const msg=$("msg"),out=$("out"),inp=$("k"),tok=$("t");
+try{tok.value=localStorage.getItem("rdwToken")||""}catch(e){}
+tok.addEventListener("change",()=>{try{localStorage.setItem("rdwToken",tok.value.trim())}catch(e){}});
+
+const pretty=k=>LABELS[k]||(k.replace(/_/g," ").replace(/^./,c=>c.toUpperCase()));
+function fmt(k,v){
+  v=String(v);
+  if(/^\d{8}$/.test(v)&&/datum|vervaldatum/.test(k))return v.slice(6)+"-"+v.slice(4,6)+"-"+v.slice(0,4);
+  if(/^\d{4}-\d{2}-\d{2}T/.test(v))return v.slice(8,10)+"-"+v.slice(5,7)+"-"+v.slice(0,4);
+  if(v==="Ja"||v==="Nee")return v;
+  if(/^[JN]$/.test(v)&&/indicator|wam|export/.test(k))return v==="J"?"Ja":"Nee";
+  return v;
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function get(id,plate){
+  const h={};const t=tok.value.trim();if(t)h["X-App-Token"]=t;
+  const r=await fetch(`${BASE}${id}.json?kenteken=${plate}`,{headers:h});
+  if(!r.ok)throw new Error(r.status);
+  return r.json();
+}
+
+function rowsHtml(rec){
+  return Object.entries(rec).filter(([k,v])=>!SKIP.test(k)&&v!==""&&v!=null)
+    .map(([k,v])=>`<div><dt>${esc(pretty(k))}</dt><dd>${esc(fmt(k,v))}</dd></div>`).join("");
+}
+
+async function search(){
+  const plate=inp.value.toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(plate.length<4){msg.className="err";msg.textContent="Dit kenteken is te kort.";return}
+  $("go").disabled=true;out.innerHTML="";msg.className="";msg.textContent="Bezig met zoeken…";
+  const res=await Promise.allSettled(SETS.map(([id])=>get(id,plate)));
+  $("go").disabled=false;
+  if(res[0].status==="rejected"){
+    msg.className="err";
+    msg.textContent="Ophalen mislukt ("+res[0].reason.message+"). Controleer je verbinding of vul een app-token in.";
+    return;
+  }
+  const main=res[0].value[0];
+  if(!main){msg.className="err";msg.textContent="Geen voertuig gevonden voor "+plate+". Controleer het kenteken.";return}
+  msg.textContent="";
+  const m=main,key=[
+    ["Eerste toelating",m.datum_eerste_toelating],["APK geldig tot",m.vervaldatum_apk],
+    ["Kleur",m.eerste_kleur],["Brandstof",res[1].value&&res[1].value[0]&&res[1].value[0].brandstof_omschrijving],
+    ["Catalogusprijs",m.catalogusprijs&&"€ "+Number(m.catalogusprijs).toLocaleString("nl-NL")],
+    ["Massa rijklaar",m.massa_rijklaar&&m.massa_rijklaar+" kg"]
+  ].filter(x=>x[1]).map(([l,v])=>`<div><b>${l}</b>${esc(/^\d{8}$/.test(v)?fmt("datum",v):v)}</div>`).join("");
+  let html=`<div class="head"><h2>${esc(m.merk||"")} ${esc(m.handelsbenaming||"")}</h2><p>${esc(m.voertuigsoort||"")} ${esc(m.inrichting||"")}</p></div><div class="key">${key}</div>`;
+  const gi=SETS.findIndex(s=>s[0]==="a34c-vvps");
+  if(res[gi].status==="fulfilled"&&res[gi].value.length){
+    const g=res[gi].value;
+    g.sort((a,b)=>String(b.meld_datum_door_keuringsinstantie||"").localeCompare(String(a.meld_datum_door_keuringsinstantie||"")));
+    try{
+      const ids=[...new Set(g.map(x=>x.gebrek_identificatie).filter(i=>i&&/^\w+$/.test(i)))];
+      if(ids.length){
+        const w=encodeURIComponent("gebrek_identificatie in("+ids.map(i=>"'"+i+"'").join(",")+")");
+        const h={};const t=tok.value.trim();if(t)h["X-App-Token"]=t;
+        const r=await fetch(`${BASE}hx2c-gt7k.json?$where=${w}`,{headers:h});
+        if(r.ok){const map={};(await r.json()).forEach(d=>map[d.gebrek_identificatie]=d.gebrek_omschrijving);
+          g.forEach(x=>{if(map[x.gebrek_identificatie])x.gebrek_omschrijving=map[x.gebrek_identificatie]})}
+      }
+    }catch(e){}
+  }
+  let txt="Kenteken: "+plate+"\nOpgehaald: "+new Date().toLocaleString("nl-NL")+"\nBron: RDW Open Data\n";
+  SETS.forEach(([id,title],i)=>{
+    const r=res[i];
+    if(r.status!=="fulfilled"||!r.value.length)return;
+    const body=r.value.map(rec=>`<dl>${rowsHtml(rec)}</dl>`).join('<div class="sep"></div>');
+    html+=`<details${i===0?" open":""}><summary>${title} (${r.value.length})</summary>${body}</details>`;
+    txt+="\n=== "+title+" ===\n"+r.value.map(rec=>Object.entries(rec).filter(([k,v])=>!SKIP.test(k)&&v!==""&&v!=null).map(([k,v])=>pretty(k)+": "+fmt(k,v)).join("\n")).join("\n---\n")+"\n";
+  });
+  html+=`<button class="go" id="dl">Download alle info (.txt)</button>`;
+  out.innerHTML=html;
+  $("dl").addEventListener("click",()=>{
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([txt],{type:"text/plain;charset=utf-8"}));
+    a.download="kenteken-"+plate+".txt";a.click();URL.revokeObjectURL(a.href);
+  });
+}
+$("go").addEventListener("click",search);
+inp.addEventListener("keydown",e=>{if(e.key==="Enter")search()});
+inp.focus();
+</script>
+</body>
+</html>
